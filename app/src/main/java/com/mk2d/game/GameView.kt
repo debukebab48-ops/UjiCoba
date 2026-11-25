@@ -1,6 +1,8 @@
 package com.mk2d.game
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -11,12 +13,12 @@ import android.view.SurfaceView
 
 class GameView(context: Context) : SurfaceView(context), Runnable {
 
+    private enum class AnimState { IDLE, WALK, PUNCH, KICK, HIT }
+
     private var gameThread: Thread? = null
     @Volatile private var isPlaying = false
     private val surfaceHolder: SurfaceHolder = holder
     private val paint = Paint()
-
-    private enum class AnimState { IDLE, WALK, PUNCH, KICK, HIT }
 
     // Posisi & Ukuran Karakter Player
     private var playerX = 260f
@@ -59,7 +61,7 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
     private val enemyIdleAnim: SpriteAnimation by lazy {
         SpriteAnimation(loadFrames("enemy_idle_"), frameDurationMs = 150L, loop = true)
     }
-    private val stageBitmap: android.graphics.Bitmap? by lazy {
+    private val stageBitmap: Bitmap? by lazy {
         loadDrawableBitmap("stage_bg")
     }
 
@@ -79,7 +81,6 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
         while (isPlaying) {
             update()
             draw()
-            // Target ~60 FPS
             try {
                 Thread.sleep(16)
             } catch (e: InterruptedException) {
@@ -91,7 +92,6 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
     private fun update() {
         if (width == 0 || height == 0) return
 
-        // Posisikan musuh di sisi kanan saat pertama kali ukuran layar terbaca
         if (enemyX > width - enemyWidth - 60f) {
             enemyX = (width - enemyWidth - 120f).coerceAtLeast(playerX + 250f)
         }
@@ -103,7 +103,6 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
         val isAttacking = currentState == AnimState.PUNCH || currentState == AnimState.KICK
         val isHurt = currentState == AnimState.HIT
 
-        // Trigger serangan baru kalau tidak sedang terkena hit
         if (!isHurt) {
             if (punchPressed && currentState != AnimState.PUNCH) {
                 punchPressed = false
@@ -121,7 +120,6 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
             kickPressed = false
         }
 
-        // Gerak kiri/kanan hanya saat tidak sedang memukul/menendang/kena hit
         if (!isAttacking && !isHurt) {
             var isMoving = false
             if (moveLeft && !moveRight) {
@@ -141,7 +139,6 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
             }
         }
 
-        // Update animasi sesuai state aktif
         when (currentState) {
             AnimState.IDLE -> idleAnim.update()
             AnimState.WALK -> walkAnim.update()
@@ -150,7 +147,6 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
                     punchAnim.update()
                     if (punchAnim.isFinished) currentState = AnimState.IDLE
                 } else {
-                    // Fallback durasi jika belum ada PNG punch
                     currentState = AnimState.IDLE
                 }
             }
@@ -172,7 +168,6 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
             }
         }
 
-        // Cek hitbox serangan ke musuh (1 kali hit per 1 aksi serangan)
         if ((currentState == AnimState.PUNCH || currentState == AnimState.KICK) && !attackHasHit) {
             val reach = if (currentState == AnimState.KICK) 110f else 80f
             val damage = if (currentState == AnimState.KICK) 15 else 10
@@ -192,7 +187,6 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
             }
         }
 
-        // Batas arena kiri-kanan
         if (playerX < 50f) playerX = 50f
         if (playerX > width - playerWidth - 50f) playerX = width - playerWidth - 50f
         if (enemyX < 50f) enemyX = 50f
@@ -203,14 +197,15 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
         enemyRect.set(enemyX, enemyY, enemyX + enemyWidth, enemyY + enemyHeight)
     }
 
-    private fun loadDrawableBitmap(resName: String): android.graphics.Bitmap? {
+    private fun loadDrawableBitmap(resName: String): Bitmap? {
+        @Suppress("DEPRECATION")
         val resId = resources.getIdentifier(resName, "drawable", context.packageName)
         if (resId == 0) return null
-        return android.graphics.BitmapFactory.decodeResource(resources, resId)
+        return BitmapFactory.decodeResource(resources, resId)
     }
 
-    private fun loadFrames(prefix: String): List<android.graphics.Bitmap> {
-        val list = mutableListOf<android.graphics.Bitmap>()
+    private fun loadFrames(prefix: String): List<Bitmap> {
+        val list = mutableListOf<Bitmap>()
         var index = 0
         while (true) {
             val bmp = loadDrawableBitmap("$prefix$index") ?: break
@@ -295,91 +290,6 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
         canvas.drawRoundRect(btnPunchRect, 20f, 20f, paint)
         canvas.drawRoundRect(btnKickRect, 20f, 20f, paint)
 
-        paint.color = Color.BLACK
-        paint.textSize = 48f
-        paint.textAlign = Paint.Align.CENTER
-        canvas.drawText("<", btnLeftRect.centerX(), btnLeftRect.centerY() + 16f, paint)
-        canvas.drawText(">", btnRightRect.centerX(), btnRightRect.centerY() + 16f, paint)
-        canvas.drawText("P", btnPunchRect.centerX(), btnPunchRect.centerY() + 16f, paint)
-        canvas.drawText("K", btnKickRect.centerX(), btnKickRect.centerY() + 16f, paint)
-
-        surfaceHolder.unlockCanvasAndPost(canvas)
-    }
-
-        // 1. Background Stage (pakai stage_bg.png kalau ada, fallback warna polos)
-        val bg = stageBitmap
-        if (bg != null) {
-            canvas.drawBitmap(bg, null, RectF(0f, 0f, width.toFloat(), height.toFloat()), null)
-        } else {
-            canvas.drawColor(Color.parseColor("#1E1E24"))
-        }
-
-        // 2. Lantai Arena
-        val groundY = height * 0.85f
-        paint.color = Color.argb(190, 58, 58, 74)
-        canvas.drawRect(0f, groundY, width.toFloat(), height.toFloat(), paint)
-
-        // 3. Musuh Dummy (hadapi player)
-        val enemyFaceRight = enemyX < playerX
-        val isEnemyFlashing = System.currentTimeMillis() < enemyHitFlashUntil
-        if (enemyIdleAnim.hasFrames) {
-            enemyIdleAnim.draw(canvas, enemyRect, enemyFaceRight)
-            if (isEnemyFlashing) {
-                paint.color = Color.argb(130, 255, 255, 255)
-                canvas.drawRect(enemyRect, paint)
-            }
-        } else {
-            paint.color = if (isEnemyFlashing) Color.WHITE else Color.parseColor("#457B9D")
-            canvas.drawRect(enemyRect, paint)
-        }
-
-        // 4. Karakter Player Per-Frame
-        val activeAnim = when (currentState) {
-            AnimState.WALK -> walkAnim
-            AnimState.PUNCH -> punchAnim
-            AnimState.KICK -> kickAnim
-            AnimState.HIT -> hitAnim
-            AnimState.IDLE -> idleAnim
-        }
-        if (activeAnim.hasFrames) {
-            activeAnim.draw(canvas, playerRect, facingRight)
-        } else {
-            paint.color = Color.parseColor("#E63946")
-            canvas.drawRect(playerRect, paint)
-        }
-
-        // 5. HP Bar Player (kiri atas) & Musuh (kanan atas)
-        val barWidth = width * 0.36f
-        val barHeight = 28f
-        val topMargin = 36f
-
-        paint.color = Color.argb(160, 0, 0, 0)
-        canvas.drawRect(40f, topMargin, 40f + barWidth, topMargin + barHeight, paint)
-        paint.color = Color.parseColor("#E63946")
-        canvas.drawRect(40f, topMargin, 40f + barWidth * (playerHp / maxHp.toFloat()), topMargin + barHeight, paint)
-
-        val enemyBarLeft = width - 40f - barWidth
-        paint.color = Color.argb(160, 0, 0, 0)
-        canvas.drawRect(enemyBarLeft, topMargin, width - 40f, topMargin + barHeight, paint)
-        paint.color = Color.parseColor("#FFB703")
-        canvas.drawRect(enemyBarLeft, topMargin, width - 40f - barWidth * (1f - enemyHp / maxHp.toFloat()), topMargin + barHeight, paint)
-
-        // 6. Tombol Kontrol Kiri, Kanan (kiri bawah) & Pukul, Tendang (kanan bawah)
-        val btnSize = 140f
-        val margin = 50f
-        btnLeftRect.set(margin, height - btnSize - margin, margin + btnSize, height - margin)
-        btnRightRect.set(margin * 2 + btnSize, height - btnSize - margin, margin * 2 + btnSize * 2, height - margin)
-
-        btnKickRect.set(width - margin - btnSize, height - btnSize - margin, width - margin, height - margin)
-        btnPunchRect.set(width - margin * 2 - btnSize * 2, height - btnSize - margin, width - margin * 2 - btnSize, height - margin)
-
-        paint.color = Color.argb(120, 255, 255, 255)
-        canvas.drawRoundRect(btnLeftRect, 20f, 20f, paint)
-        canvas.drawRoundRect(btnRightRect, 20f, 20f, paint)
-        canvas.drawRoundRect(btnPunchRect, 20f, 20f, paint)
-        canvas.drawRoundRect(btnKickRect, 20f, 20f, paint)
-
-        // Label Teks Tombol
         paint.color = Color.BLACK
         paint.textSize = 48f
         paint.textAlign = Paint.Align.CENTER

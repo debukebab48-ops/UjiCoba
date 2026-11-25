@@ -7,11 +7,14 @@ import android.graphics.RectF
 
 class SpriteAnimation(
     private val frames: List<Bitmap>,
-    private val frameDurationMs: Long = 120L
+    private val frameDurationMs: Long = 120L,
+    private val loop: Boolean = true
 ) {
     private var currentFrameIndex = 0
     private var lastFrameTime = System.currentTimeMillis()
     private val flipMatrix = Matrix()
+    var isFinished = false
+        private set
 
     val hasFrames: Boolean
         get() = frames.isNotEmpty()
@@ -19,15 +22,23 @@ class SpriteAnimation(
     fun reset() {
         currentFrameIndex = 0
         lastFrameTime = System.currentTimeMillis()
+        isFinished = false
     }
 
     fun update() {
-        if (frames.size <= 1) return
+        if (frames.isEmpty() || isFinished) return
+        if (frames.size == 1 && loop) return
 
         val now = System.currentTimeMillis()
         if (now - lastFrameTime >= frameDurationMs) {
-            currentFrameIndex = (currentFrameIndex + 1) % frames.size
             lastFrameTime = now
+            if (currentFrameIndex + 1 < frames.size) {
+                currentFrameIndex++
+            } else if (loop) {
+                currentFrameIndex = 0
+            } else {
+                isFinished = true
+            }
         }
     }
 
@@ -43,7 +54,6 @@ class SpriteAnimation(
             flipMatrix.postScale(scaleX, scaleY)
             flipMatrix.postTranslate(destRect.left, destRect.top)
         } else {
-            // Flip horizontal dari sumbu kanan lalu geser ke posisi destRect
             flipMatrix.postScale(-scaleX, scaleY)
             flipMatrix.postTranslate(destRect.right, destRect.top)
         }
