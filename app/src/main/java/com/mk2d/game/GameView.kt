@@ -16,12 +16,28 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
     private val surfaceHolder: SurfaceHolder = holder
     private val paint = Paint()
 
-    // Posisi & Ukuran Karakter (Sementara pakai placeholder sebelum aset foto masuk)
+    private enum class AnimState { IDLE, WALK }
+
+    // Posisi & Ukuran Karakter
     private var playerX = 300f
     private var playerY = 0f
-    private val playerWidth = 140f
-    private val playerHeight = 280f
+    private val playerWidth = 180f
+    private val playerHeight = 320f
     private val moveSpeed = 12f
+    private var facingRight = true
+    private var currentState = AnimState.IDLE
+    private val playerRect = RectF()
+
+    // Aset Per-Frame & Stage
+    private val idleAnim: SpriteAnimation by lazy {
+        SpriteAnimation(loadFrames("char_idle_"), frameDurationMs = 140L)
+    }
+    private val walkAnim: SpriteAnimation by lazy {
+        SpriteAnimation(loadFrames("char_walk_"), frameDurationMs = 90L)
+    }
+    private val stageBitmap: android.graphics.Bitmap? by lazy {
+        loadDrawableBitmap("stage_bg")
+    }
 
     // Status Input Tombol
     private var moveLeft = false
@@ -51,34 +67,86 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
         val groundY = height * 0.85f
         playerY = groundY - playerHeight
 
-        // Gerak Kiri / Kanan + Batas Layar
-        if (moveLeft) {
+        // Gerak Kiri / Kanan + Arah Hadap + Batas Layar
+        var isMoving = false
+        if (moveLeft && !moveRight) {
+            facingRight = false
+            isMoving = true
             playerX -= moveSpeed
-            if (playerX < 50f) playerX = 50f
-        }
-        if (moveRight) {
+        } else if (moveRight && !moveLeft) {
+            facingRight = true
+            isMoving = true
             playerX += moveSpeed
-            if (playerX > width - playerWidth - 50f) {
-                playerX = width - playerWidth - 50f
-            }
         }
+
+        if (playerX < 50f) playerX = 50f
+        if (playerX > width - playerWidth - 50f) {
+            playerX = width - playerWidth - 50f
+        }
+
+        val nextState = if (isMoving) AnimState.WALK else AnimState.IDLE
+        if (nextState != currentState) {
+            currentState = nextState
+            if (currentState == AnimState.WALK) walkAnim.reset() else idleAnim.reset()
+        }
+
+        if (currentState == AnimState.WALK) {
+            walkAnim.update()
+        } else {
+            idleAnim.update()
+        }
+
+        playerRect.set(playerX, playerY, playerX + playerWidth, playerY + playerHeight)
+    }
+
+    private fun loadDrawableBitmap(resName: String): android.graphics.Bitmap? {
+        val resId = resources.getIdentifier(resName, "drawable", context.packageName)
+        if (resId == 0) return null
+        return android.graphics.BitmapFactory.decodeResource(resources, resId)
+    }
+
+    private fun loadFrames(prefix: String): List<android.graphics.Bitmap> {
+        val list = mutableListOf<android.graphics.Bitmap>()
+        var index = 0
+        while (true) {
+            val bmp = loadDrawableBitmap("$prefix$index") ?: break
+            list.add(bmp)
+            index++
+        }
+        return list
     }
 
     private fun draw() {
         if (!surfaceHolder.surface.isValid) return
         val canvas: Canvas = surfaceHolder.lockCanvas()
 
-        // 1. Background Stage Sementara
-        canvas.drawColor(Color.parseColor("#1E1E24"))
+        // 1. Background Stage (pakai stage_bg.png kalau ada, fallback warna polos)
+        val bg = stageBitmap
+        if (bg != null) {
+            canvas.drawBitmap(bg, null, RectF(0f, 0f, width.toFloat(), height.toFloat()), null)
+        } else {
+            canvas.drawColor(Color.parseColor("#1E1E24"))
+        }
 
         // 2. Lantai Arena
         val groundY = height * 0.85f
-        paint.color = Color.parseColor("#3A3A4A")
+        paint.color = Color.argb(190, 58, 58, 74)
         canvas.drawRect(0f, groundY, width.toFloat(), height.toFloat(), paint)
 
-        // 3. Karakter (Placeholder Kotak Merah - siap diganti Bitmap PNG di Sesi 2)
-        paint.color = Color.parseColor("#E63946")
-        canvas.drawRect(playerX, playerY, playerX + playerWidth, playerY + playerHeight, paint)
+        // 3. Karakter Per-Frame (fallback kotak merah jika belum ada PNG di drawable)
+        val activeAnim = if (currentState == AnimState.WALK) walkAnim else idleAnim
+        if (activeAnim.hasFrames) {
+            activeAnim.draw(canvas, playerRect, facingRight)
+        } else {
+            paint.color = Color.parseColor("#E63946")
+            canvas.drawRect(playerRect, paint)
+        }
+
+        // Info Debug sementara di pojok kiri atas
+        paint.color = Color.WHITE
+        paint.textSize = 32f
+        paint.textAlign = Paint.Align.LEFT
+        canvas.drawText("Idle: ${idleAnim.hasFrames} | Walk: ${walkAnim.hasFrames}", 40f, 60f, paint)
 
         // 4. Tombol Kontrol Kiri & Kanan
         val btnSize = 150f
