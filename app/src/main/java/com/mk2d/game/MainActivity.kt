@@ -34,3 +34,4 @@ class MainActivity : Activity() {
         gameView.pause()
     }
 }
+ 
