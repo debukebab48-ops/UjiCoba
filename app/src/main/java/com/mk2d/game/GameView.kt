@@ -32,6 +32,7 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
     private var playerHp = 100
     private val maxHp = 100
     private var attackHasHit = false
+private var fallbackAttackUntil = 0L
 
     // Posisi & Status Musuh Dummy
     private var enemyX = 760f
@@ -104,7 +105,21 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
         val isHurt = currentState == AnimState.HIT
 
         if (!isHurt) {
-            if (punchPressed && currentState != AnimState.PUNCH) {
+            if (punchPressed && currentState != AnimState.PUNCH && currentState != AnimState.KICK) {
+    punchPressed = false
+    currentState = AnimState.PUNCH
+    attackHasHit = false
+    fallbackAttackUntil = System.currentTimeMillis() + 220L
+    punchAnim.reset()
+} else if (kickPressed && currentState != AnimState.KICK && currentState != AnimState.PUNCH) {
+    kickPressed = false
+    currentState = AnimState.KICK
+    attackHasHit = false
+    fallbackAttackUntil = System.currentTimeMillis() + 240L
+    kickAnim.reset()
+} else {
+    punchPressed = false
+    kickPressed = false
                 punchPressed = false
                 currentState = AnimState.PUNCH
                 attackHasHit = false
@@ -143,6 +158,21 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
             AnimState.IDLE -> idleAnim.update()
             AnimState.WALK -> walkAnim.update()
             AnimState.PUNCH -> {
+                if (punchAnim.hasFrames) {
+                    punchAnim.update()
+                    if (punchAnim.isFinished) currentState = AnimState.IDLE
+                } else if (System.currentTimeMillis() >= fallbackAttackUntil) {
+                    currentState = AnimState.IDLE
+                }
+            }
+            AnimState.KICK -> {
+                if (kickAnim.hasFrames) {
+                    kickAnim.update()
+                    if (kickAnim.isFinished) currentState = AnimState.IDLE
+                } else if (System.currentTimeMillis() >= fallbackAttackUntil) {
+                    currentState = AnimState.IDLE
+                }
+            }
                 if (punchAnim.hasFrames) {
                     punchAnim.update()
                     if (punchAnim.isFinished) currentState = AnimState.IDLE
